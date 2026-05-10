@@ -24,6 +24,27 @@ module servicios{
     enum Moneda{
       CIEN, DOCIENTOS, QUINIENTOS
     }
+
+    interface ServicioBodega {
+
+            // Consultas de inventario (retornan mapa nombre->cantidad)
+            MapStrInt consultarMonedas();
+            MapStrInt consultarIngredientes();
+            MapStrInt consultarSuministros();
+
+            // Retira 'cantidad' unidades del item con nombre 'idItem'
+            void retirarExistencias(string idItem, int cantidad);
+
+            // Agrega 'cantidad' unidades del item con nombre 'idItem'
+            void abastecerExistencia(string idItem, int cantidad);
+
+            // Entrega un kit de reparacion al tecnico indicado
+            void entregaKitReparacion(int idTecnico);
+
+            // Reserva existencias antes del despacho
+            void separarExistencias(string idItem, int cantidad);
+        }
+
   
 
 
