@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<composite xmlns="http://www.osoa.org/xmlns/sca/1.0"
+	xmlns:frascati="http://frascati.ow2.org/xmlns/sca/1.1" targetNamespace="http://frascati.ow2.org/mqcafe"
+	name="comunicacionCom">
+
+	<component name="s">
+
+		<service name="servicioComLogistica">
+
+			<interface.java interface="servicios.ServicioComLogistica" />
+
+			<frascati:binding.rmi host="localhost"
+				serviceName="rmiService" port="1099" />
+
+		</service>
+
+
+		<service name="servicioComMQCafe">
+
+			<interface.java interface="servicios.ServicioComMQCafe" />
+
+			<frascati:binding.rmi host="localhost"
+				serviceName="rmiService4" port="1096" />
+
+		</service>
+
+		<service name="servicioProxyServer">
+
+			<interface.java interface="servicios.ServicioProxyServer" />
+
+			<frascati:binding.rmi host="localhost"
+				serviceName="rmiService10" port="1098" />
+
+		</service>
+
+		<service name="servicioClienteRecServidor">
+
+			<interface.java interface="servicios.ServicioClienteRecServidor" />
+
+			<frascati:binding.rmi host="localhost"
+				serviceName="rmiService11" port="1097" />
+
+		</service>
+
+
+
+		<implementation.java class="comunicacion.Comunicacion" />
+
+	</component>
+
+
+
+
+</composite>
