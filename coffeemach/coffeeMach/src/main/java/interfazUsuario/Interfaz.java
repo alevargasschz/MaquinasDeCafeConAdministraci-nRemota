@@ -19,7 +19,7 @@ public class Interfaz extends JFrame {
 			btnMantenimiento, btnDevolver, btnVerificar, btnEnviarReporte, btnActualizar;
 	private JTextArea textAreaSaldo, textAreaInfo, textAreaAlarmas,
 			textAreaInsumos, textAreaRecetas, textAreaDevuelta;
-	private JComboBox comboBoxProducto;
+	private JComboBox<String> comboBoxProducto;
 
 	/**
 	 * Create the frame
@@ -139,7 +139,7 @@ public class Interfaz extends JFrame {
 		lblProductos.setBounds(10, 11, 132, 14);
 		panel_2.add(lblProductos);
 
-		comboBoxProducto = new JComboBox();
+		comboBoxProducto = new JComboBox<String>();
 		comboBoxProducto.setBounds(10, 33, 221, 20);
 		panel_2.add(comboBoxProducto);
 
@@ -323,11 +323,11 @@ public class Interfaz extends JFrame {
 		this.textAreaRecetas = textAreaRecetas;
 	}
 
-	public JComboBox getComboBoxProducto() {
+	public JComboBox<String> getComboBoxProducto() {
 		return comboBoxProducto;
 	}
 
-	public void setComboBoxProducto(JComboBox comboBoxProducto) {
+	public void setComboBoxProducto(JComboBox<String> comboBoxProducto) {
 		this.comboBoxProducto = comboBoxProducto;
 	}
 

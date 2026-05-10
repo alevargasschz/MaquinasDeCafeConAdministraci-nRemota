@@ -11,6 +11,9 @@ subprojects {
     //
     apply plugin: 'java'
     apply plugin: 'com.zeroc.gradle.ice-builder.slice'
+
+    sourceCompatibility = JavaVersion.VERSION_11
+    targetCompatibility = JavaVersion.VERSION_11
  
     //
     // Both Client and Server projects share the Printer.ice Slice definitions
