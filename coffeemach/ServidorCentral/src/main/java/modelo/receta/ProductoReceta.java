@@ -25,6 +25,9 @@ public class ProductoReceta implements RecetaService {
     public String[] consultarIngredientes(Current current) {
         ConexionBD cbd = new ConexionBD(communicator);
         cbd.conectarBaseDatos();
+        if (cbd.getConnection() == null) {
+            return new String[0];
+        }
         ManejadorDatos md = new ManejadorDatos();
         md.setConexion(cbd.getConnection());
 
@@ -39,6 +42,9 @@ public class ProductoReceta implements RecetaService {
     public String[] consultarRecetas(Current current) {
         ConexionBD cbd = new ConexionBD(communicator);
         cbd.conectarBaseDatos();
+        if (cbd.getConnection() == null) {
+            return new String[0];
+        }
         ManejadorDatos md = new ManejadorDatos();
         md.setConexion(cbd.getConnection());
 
@@ -53,6 +59,9 @@ public class ProductoReceta implements RecetaService {
     public String[] consultarProductos(Current current) {
         ConexionBD cbd = new ConexionBD(communicator);
         cbd.conectarBaseDatos();
+        if (cbd.getConnection() == null) {
+            return new String[0];
+        }
         ManejadorDatos md = new ManejadorDatos();
         md.setConexion(cbd.getConnection());
 
@@ -60,7 +69,7 @@ public class ProductoReceta implements RecetaService {
 
         cbd.cerrarConexion();
 
-        if (!listaAsociada.equals(null)) {
+        if (listaAsociada != null) {
 
             String[] retorno = new String[listaAsociada.size()];
 
@@ -84,6 +93,9 @@ public class ProductoReceta implements RecetaService {
     public void borrarReceta(int cod, Current current) {
         ConexionBD cbd = new ConexionBD(communicator);
         cbd.conectarBaseDatos();
+        if (cbd.getConnection() == null) {
+            return;
+        }
         ManejadorDatos md = new ManejadorDatos();
         md.setConexion(cbd.getConnection());
 
@@ -97,6 +109,9 @@ public class ProductoReceta implements RecetaService {
 
         ConexionBD cbd = new ConexionBD(communicator);
         cbd.conectarBaseDatos();
+        if (cbd.getConnection() == null) {
+            return;
+        }
         ManejadorDatos md = new ManejadorDatos();
         md.setConexion(cbd.getConnection());
 
@@ -109,6 +124,9 @@ public class ProductoReceta implements RecetaService {
     public String registrarReceta(String nombre, int precio, Current current) {
         ConexionBD cbd = new ConexionBD(communicator);
         cbd.conectarBaseDatos();
+        if (cbd.getConnection() == null) {
+            return "";
+        }
         ManejadorDatos md = new ManejadorDatos();
         md.setConexion(cbd.getConnection());
 
@@ -123,6 +141,9 @@ public class ProductoReceta implements RecetaService {
     public String registrarIngrediente(String nombre, Current current) {
         ConexionBD cbd = new ConexionBD(communicator);
         cbd.conectarBaseDatos();
+        if (cbd.getConnection() == null) {
+            return "";
+        }
         ManejadorDatos md = new ManejadorDatos();
         md.setConexion(cbd.getConnection());
 

@@ -69,7 +69,7 @@ public class InterfazLogistica extends JFrame {
         JPanel panel = new JPanel(new BorderLayout());
         panel.setBorder(new TitledBorder("Maquinas con alarmas activas"));
 
-        String[] cols = {"ID Maquina", "Ubicacion / Descripcion"};
+        String[] cols = {"ID Maquina", "Ubicacion", "Fecha", "Tipo", "Descripcion"};
         modeloMaquinas = new DefaultTableModel(cols, 0) {
             @Override public boolean isCellEditable(int r, int c) { return false; }
         };
@@ -83,6 +83,15 @@ public class InterfazLogistica extends JFrame {
             if (fila >= 0) {
                 Object idVal = modeloMaquinas.getValueAt(fila, 0);
                 campoIdMaquina.setText(idVal.toString());
+
+                Object tipoVal = modeloMaquinas.getValueAt(fila, 3);
+                if (tipoVal != null) {
+                    try {
+                        seleccionarTipoAlarma(Integer.parseInt(tipoVal.toString()));
+                    } catch (NumberFormatException ignore) {
+                        // Se mantiene el valor manual del combo
+                    }
+                }
             }
         });
 
@@ -190,11 +199,22 @@ public class InterfazLogistica extends JFrame {
         try {
             List<String> alarmas = control.getMaquinasConAlarmas();
             for (String entrada : alarmas) {
-                // Formato esperado: "idMaq-ubicacion"
-                String[] partes = entrada.split("-", 2);
-                String id  = partes.length > 0 ? partes[0] : entrada;
-                String ubi = partes.length > 1 ? partes[1] : "(sin ubicacion)";
-                modeloMaquinas.addRow(new Object[]{id, ubi});
+                if (entrada.contains("#")) {
+                    // Formato real del servidor: id#ubicacion#fecha#idAlarma#descripcion
+                    String[] partes = entrada.split("#", 5);
+                    String id          = partes.length > 0 ? partes[0] : "?";
+                    String ubicacion   = partes.length > 1 ? partes[1] : "(sin ubicacion)";
+                    String fecha       = partes.length > 2 ? partes[2] : "-";
+                    String tipoAlarma  = partes.length > 3 ? partes[3] : "-";
+                    String descripcion = partes.length > 4 ? partes[4] : "-";
+                    modeloMaquinas.addRow(new Object[]{id, ubicacion, fecha, tipoAlarma, descripcion});
+                } else {
+                    // Compatibilidad: formato antiguo id-ubicacion
+                    String[] partes = entrada.split("-", 2);
+                    String id  = partes.length > 0 ? partes[0] : entrada;
+                    String ubi = partes.length > 1 ? partes[1] : "(sin ubicacion)";
+                    modeloMaquinas.addRow(new Object[]{id, ubi, "-", "-", "-"});
+                }
             }
             if (alarmas.isEmpty()) {
                 mostrarResultado("Sin alarmas activas para el operador #"
@@ -258,5 +278,11 @@ public class InterfazLogistica extends JFrame {
 
     private void mostrarResultado(String msg) {
         areaResultado.setText(msg);
+    }
+
+    private void seleccionarTipoAlarma(int tipo) {
+        if (tipo >= 1 && tipo <= comboTipoAlarma.getItemCount()) {
+            comboTipoAlarma.setSelectedIndex(tipo - 1);
+        }
     }
 }

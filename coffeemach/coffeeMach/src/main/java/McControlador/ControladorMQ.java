@@ -21,6 +21,8 @@ import ingrediente.IngredienteRepositorio;
 
 public class ControladorMQ implements Runnable, ServicioAbastecimiento {
 
+	private static final String CTX_TRACE_ID = "traceId";
+
 	private AlarmaServicePrx alarmaServicePrx;
 	private VentaServicePrx ventasService;
 
@@ -76,61 +78,49 @@ public class ControladorMQ implements Runnable, ServicioAbastecimiento {
 
 	@Override
 	public void abastecer(int codMaquina, int idAlarma, Current current) {
-		// TODO Auto-generated method stub
-		int cantidad = 0;
+		int tipoCentral = normalizarTipoAlarma(idAlarma);
+		int cantidad = cantidadPorTipo(tipoCentral);
 		System.out.println("Entra a abastecer");
-
-		System.out.println(codMaquina + "-" + idAlarma + "-" + this.codMaquina);
+		System.out.println(codMaquina + "-" + idAlarma + "-" + this.codMaquina
+				+ " tipoCentral=" + tipoCentral + " trace=" + traceIdFrom(current));
 
 		if (codMaquina == this.codMaquina) {
 
 			System.out.println("Entra al primer if");
 
-			if (idAlarma == 1) {
-				// Habilita Interfaz
-			}
-
-			else if (idAlarma == 2 | idAlarma == 3) {
-				// Depositos Monedas
-				DepositoMonedas moneda = monedas.findByKey("100");
-				moneda.setCantidad(20);
-				monedas.addElement("100", moneda);
-
-				if (idAlarma == 3) {
-
+			switch (tipoCentral) {
+				case 1:
+					recargarIngredienteEspecifico("Cafe");
+					break;
+				case 2: {
+					DepositoMonedas moneda = monedas.findByKey("100");
+					moneda.setCantidad(20);
+					monedas.addElement("100", moneda);
+					break;
 				}
-
-			} else if (idAlarma == 4 | idAlarma == 5) {
-				// Depositos Monedas
-				DepositoMonedas moneda = monedas.findByKey("200");
-				moneda.setCantidad(20);
-				monedas.addElement("200", moneda);
+				case 3: {
+					DepositoMonedas moneda = monedas.findByKey("200");
+					moneda.setCantidad(20);
+					monedas.addElement("200", moneda);
+					break;
+				}
+				case 4: {
+					DepositoMonedas moneda = monedas.findByKey("500");
+					moneda.setCantidad(20);
+					monedas.addElement("500", moneda);
+					break;
+				}
+				case 5:
+					recargarIngredienteEspecifico("Vaso");
+					break;
+				case 6:
+					// Mantenimiento/reparacion: no requiere recargar inventario local.
+					break;
+				default:
+					break;
 			}
 
-			else if (idAlarma == 6 | idAlarma == 7) {
-				// Depositos Monedas
-				DepositoMonedas moneda = monedas.findByKey("500");
-				moneda.setCantidad(20);
-				monedas.addElement("500", moneda);
-			}
-
-			else if (idAlarma == 8 | idAlarma == 12) {
-				recargarIngredienteEspecifico("Agua");
-			}
-
-			else if (idAlarma == 9 | idAlarma == 13) {
-				recargarIngredienteEspecifico("Cafe");
-			}
-
-			else if (idAlarma == 10 | idAlarma == 14) {
-				recargarIngredienteEspecifico("Azucar");
-			}
-
-			else if (idAlarma == 11 | idAlarma == 15) {
-				recargarIngredienteEspecifico("Vaso");
-			}
-
-			quitarAlarma(idAlarma + "");
+			limpiarAlarmasPorTipo(tipoCentral, idAlarma);
 
 			if (alarmas.getValues().isEmpty()) {
 				frame.setEnabled(true);
@@ -148,8 +138,109 @@ public class ControladorMQ implements Runnable, ServicioAbastecimiento {
 			// ResetAlarmas
 
 			// Envio a Servidor
-			alarmaServicePrx.recibirNotificacionAbastesimiento(codMaquina, idAlarma + "", cantidad);
+			alarmaServicePrx.recibirNotificacionAbastesimiento(
+					codMaquina,
+					tipoCentral + "",
+					cantidad,
+					buildForwardContext(current));
 		}
+	}
+
+	private int normalizarTipoAlarma(int idAlarma) {
+		switch (idAlarma) {
+			case 1:
+				return 6; // mantenimiento local -> mal funcionamiento central
+			case 2:
+				return 2;
+			case 3:
+				return 3;
+			case 4:
+				return 4;
+			case 5:
+				return 5;
+			case 6:
+				return 6;
+			case 7:
+				return 4;
+			case 8:
+			case 9:
+			case 10:
+			case 11:
+			case 12:
+			case 13:
+			case 14:
+			case 15:
+				return 1;
+			default:
+				return idAlarma;
+		}
+	}
+
+	private int cantidadPorTipo(int tipoCentral) {
+		switch (tipoCentral) {
+			case 1:
+				return 100;
+			case 2:
+			case 3:
+			case 4:
+				return 20;
+			case 5:
+				return 50;
+			case 6:
+				return 1;
+			default:
+				return 0;
+		}
+	}
+
+	private void limpiarAlarmasPorTipo(int tipoCentral, int idOriginal) {
+		quitarAlarma(idOriginal + "");
+
+		switch (tipoCentral) {
+			case 1:
+				quitarAlarma("8");
+				quitarAlarma("9");
+				quitarAlarma("10");
+				quitarAlarma("11");
+				quitarAlarma("12");
+				quitarAlarma("13");
+				quitarAlarma("14");
+				quitarAlarma("15");
+				break;
+			case 2:
+				quitarAlarma("2");
+				quitarAlarma("3");
+				break;
+			case 3:
+				quitarAlarma("4");
+				quitarAlarma("5");
+				break;
+			case 4:
+				quitarAlarma("6");
+				quitarAlarma("7");
+				break;
+			case 6:
+				quitarAlarma("1");
+				break;
+			default:
+				break;
+		}
+	}
+
+	private Map<String, String> buildForwardContext(Current current) {
+		Map<String, String> ctx = new HashMap<>();
+		if (current != null && current.ctx != null) {
+			ctx.putAll(current.ctx);
+		}
+		ctx.putIfAbsent(CTX_TRACE_ID, UUID.randomUUID().toString());
+		return ctx;
+	}
+
+	private String traceIdFrom(Current current) {
+		if (current == null || current.ctx == null) {
+			return "sin-trace";
+		}
+		return current.ctx.getOrDefault(CTX_TRACE_ID, "sin-trace");
 	}
 
 	public void quitarAlarma(String tipo) {

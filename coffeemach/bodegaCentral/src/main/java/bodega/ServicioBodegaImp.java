@@ -19,6 +19,13 @@ import java.util.concurrent.ConcurrentHashMap;
  */
 public class ServicioBodegaImp implements ServicioBodega, Bodega {
 
+    private String traceId(Current current) {
+        if (current == null || current.ctx == null) {
+            return "sin-trace";
+        }
+        return current.ctx.getOrDefault("traceId", "sin-trace");
+    }
+
     // -------------------------------------------------------------------
     // Inventario interno (nombre -> cantidad)
     // -------------------------------------------------------------------
@@ -66,18 +73,18 @@ public class ServicioBodegaImp implements ServicioBodega, Bodega {
     @Override
     public void retirarExistencias(String idItem, int cantidad, Current current) {
         if (!inventario.containsKey(idItem)) {
-            System.err.println("ADVERTENCIA: item desconocido: " + idItem);
+            System.err.println("[Bodega][" + traceId(current) + "] ADVERTENCIA: item desconocido: " + idItem);
             return;
         }
         inventario.computeIfPresent(idItem, (k, v) -> Math.max(0, v - cantidad));
-        System.out.println("[Bodega] Retirados " + cantidad + " unidades de '" + idItem + "'"
+        System.out.println("[Bodega][" + traceId(current) + "] Retirados " + cantidad + " unidades de '" + idItem + "'"
                 + " | Nuevo stock: " + inventario.get(idItem));
     }
 
     @Override
     public void abastecerExistencia(String idItem, int cantidad, Current current) {
         inventario.merge(idItem, cantidad, Integer::sum);
-        System.out.println("[Bodega] Abastecidos " + cantidad + " unidades de '" + idItem + "'"
+        System.out.println("[Bodega][" + traceId(current) + "] Abastecidos " + cantidad + " unidades de '" + idItem + "'"
                 + " | Nuevo stock: " + inventario.get(idItem));
     }
 
@@ -85,18 +92,18 @@ public class ServicioBodegaImp implements ServicioBodega, Bodega {
     public void entregaKitReparacion(int idTecnico, Current current) {
         int stock = inventario.getOrDefault("KitReparacion", 0);
         if (stock <= 0) {
-            System.err.println("[Bodega] Sin kits de reparacion disponibles para tecnico " + idTecnico);
+            System.err.println("[Bodega][" + traceId(current) + "] Sin kits de reparacion disponibles para tecnico " + idTecnico);
             return;
         }
         retirarExistencias("KitReparacion", 1, current);
-        System.out.println("[Bodega] Kit de reparacion entregado al tecnico ID: " + idTecnico);
+        System.out.println("[Bodega][" + traceId(current) + "] Kit de reparacion entregado al tecnico ID: " + idTecnico);
     }
 
     @Override
     public void separarExistencias(String idItem, int cantidad, Current current) {
         // En el prototipo solo registramos la operacion en consola.
         // En produccion se marcaria como "reservado" en la BD.
-        System.out.println("[Bodega] Existencias separadas/reservadas: "
+        System.out.println("[Bodega][" + traceId(current) + "] Existencias separadas/reservadas: "
                 + idItem + " (" + cantidad + " unidades)");
     }
 

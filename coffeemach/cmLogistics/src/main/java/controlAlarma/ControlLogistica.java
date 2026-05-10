@@ -1,14 +1,15 @@
 package controlAlarma;
 
 import com.zeroc.Ice.Communicator;
-import com.zeroc.Ice.ObjectNotFoundException;
 
 import servicios.ServicioAbastecimientoPrx;
 import servicios.ServicioBodegaPrx;
 import servicios.ServicioComLogisticaPrx;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 
 /**
  * ControlLogistica
@@ -24,6 +25,11 @@ import java.util.Map;
  * en CmLogistic.cfg, que el Communicator ya tiene cargadas.
  */
 public class ControlLogistica {
+
+    private static final String CTX_TRACE_ID = "traceId";
+    private static final String CTX_OPERADOR = "operadorId";
+    private static final String CTX_MAQUINA  = "maquinaId";
+    private static final String CTX_ALARMA   = "tipoAlarma";
 
     // Tipos de alarma (deben coincidir con Alarma.java en ServidorCentral)
     public static final int ALARMA_INGREDIENTE         = 1;
@@ -165,15 +171,17 @@ public class ControlLogistica {
 
         String item     = ITEM_POR_ALARMA.getOrDefault(tipoAlarma, "Desconocido");
         int    cantidad = CANTIDAD_POR_ALARMA.getOrDefault(tipoAlarma, 0);
+        Map<String, String> traceCtx = buildTraceContext(idMaquina, tipoAlarma);
+        String traceId = traceCtx.get(CTX_TRACE_ID);
 
         try {
             // Paso 1 — Retirar de la Bodega
             if (tipoAlarma == ALARMA_MAL_FUNCIONAMIENTO) {
-                bodegaPrx.entregaKitReparacion(idOperador);
+                bodegaPrx.entregaKitReparacion(idOperador, traceCtx);
             } else {
-                bodegaPrx.retirarExistencias(item, cantidad);
+                bodegaPrx.retirarExistencias(item, cantidad, traceCtx);
             }
-            System.out.println("[Logistica] Bodega: retirado " + cantidad
+            System.out.println("[Logistica][" + traceId + "] Bodega: retirado " + cantidad
                     + " de '" + item + "'.");
 
             // Paso 2 — Llamar a abastecer() en la maquina
@@ -186,15 +194,15 @@ public class ControlLogistica {
                         + " en " + ipMaquina + ":" + puertoMaq;
             }
 
-            maqPrx.abastecer(idMaquina, tipoAlarma);
-            System.out.println("[Logistica] Maquina " + idMaquina
+                maqPrx.abastecer(idMaquina, tipoAlarma, traceCtx);
+                System.out.println("[Logistica][" + traceId + "] Maquina " + idMaquina
                     + " abastecida (alarma tipo " + tipoAlarma + ").");
 
-            return "OK — Alarma tipo " + tipoAlarma + " resuelta en maquina "
+                return "OK — [" + traceId + "] Alarma tipo " + tipoAlarma + " resuelta en maquina "
                     + idMaquina + ". Item: " + item + " (" + cantidad + " uds.)";
 
         } catch (Exception ex) {
-            String msg = "ERROR al resolver alarma en maquina " + idMaquina
+            String msg = "ERROR [" + traceId + "] al resolver alarma en maquina " + idMaquina
                     + ": " + ex.getMessage();
             System.err.println("[Logistica] " + msg);
             return msg;
@@ -210,12 +218,14 @@ public class ControlLogistica {
     public String resolverAlarmaCfg(int idMaquina, int tipoAlarma) {
         String item     = ITEM_POR_ALARMA.getOrDefault(tipoAlarma, "Desconocido");
         int    cantidad = CANTIDAD_POR_ALARMA.getOrDefault(tipoAlarma, 0);
+        Map<String, String> traceCtx = buildTraceContext(idMaquina, tipoAlarma);
+        String traceId = traceCtx.get(CTX_TRACE_ID);
 
         try {
             if (tipoAlarma == ALARMA_MAL_FUNCIONAMIENTO) {
-                bodegaPrx.entregaKitReparacion(idOperador);
+                bodegaPrx.entregaKitReparacion(idOperador, traceCtx);
             } else {
-                bodegaPrx.retirarExistencias(item, cantidad);
+                bodegaPrx.retirarExistencias(item, cantidad, traceCtx);
             }
 
             ServicioAbastecimientoPrx maqPrx = ServicioAbastecimientoPrx.checkedCast(
@@ -225,12 +235,21 @@ public class ControlLogistica {
                 return "ERROR: Proxy MaquinaCafe.Proxy no configurado en CmLogistic.cfg";
             }
 
-            maqPrx.abastecer(idMaquina, tipoAlarma);
-            return "OK — Alarma tipo " + tipoAlarma + " resuelta en maquina "
+            maqPrx.abastecer(idMaquina, tipoAlarma, traceCtx);
+            return "OK — [" + traceId + "] Alarma tipo " + tipoAlarma + " resuelta en maquina "
                     + idMaquina + ". Item: " + item + " (" + cantidad + " uds.)";
 
         } catch (Exception ex) {
-            return "ERROR: " + ex.getMessage();
+            return "ERROR [" + traceId + "]: " + ex.getMessage();
         }
+    }
+
+    private Map<String, String> buildTraceContext(int idMaquina, int tipoAlarma) {
+        Map<String, String> ctx = new HashMap<>();
+        ctx.put(CTX_TRACE_ID, UUID.randomUUID().toString());
+        ctx.put(CTX_OPERADOR, String.valueOf(idOperador));
+        ctx.put(CTX_MAQUINA, String.valueOf(idMaquina));
+        ctx.put(CTX_ALARMA, String.valueOf(tipoAlarma));
+        return ctx;
     }
 }

@@ -45,7 +45,9 @@ public class ConexionBD {
 
 	public void cerrarConexion() {
 		try {
-			conexion.close();
+			if (conexion != null && !conexion.isClosed()) {
+				conexion.close();
+			}
 		} catch (SQLException e) {
 			e.printStackTrace();
 		}
