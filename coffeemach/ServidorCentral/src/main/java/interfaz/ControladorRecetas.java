@@ -7,7 +7,6 @@ import java.util.ArrayList;
 import javax.swing.JFrame;
 
 import modelo.receta.ProductoReceta;
-import servicios.*;
 
 public class ControladorRecetas implements Runnable {
 

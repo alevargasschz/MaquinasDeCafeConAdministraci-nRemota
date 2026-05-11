@@ -54,10 +54,10 @@ insert into maquina (idmaquina,ubicacion) values (8,'Jardin Plaza');
 
 /*Alarma Máquina*/
 insert into alarma_maquina (id_alarma,id_maquina,fecha_inicial,fecha_final,consecutivo) values (1,1,now(),null,1);
-insert into alarma_maquina (id_alarma,id_maquina,fecha_inicial,fecha_final,consecutivo) values (2,5,now(),null,2);
+insert into alarma_maquina (id_alarma,id_maquina,fecha_inicial,fecha_final,consecutivo) values (2,2,now(),null,2);
 insert into alarma_maquina (id_alarma,id_maquina,fecha_inicial,fecha_final,consecutivo) values (3,1,now(),null,3);
 insert into alarma_maquina (id_alarma,id_maquina,fecha_inicial,fecha_final,consecutivo) values (4,3,now(),null,4);
-insert into alarma_maquina (id_alarma,id_maquina,fecha_inicial,fecha_final,consecutivo) values (1,1,now(),null,5);
+insert into alarma_maquina (id_alarma,id_maquina,fecha_inicial,fecha_final,consecutivo) values (5,2,now(),null,5);
 
 /*Operadores*/
 insert into operadores (idoperador,nombre,correo,contrasena) values (1,'Miguel Angel','test@gmail.com','1123');

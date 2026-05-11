@@ -5,11 +5,17 @@ import com.zeroc.Ice.Util;
 import guiInventario.Interfaz;
 
 import javax.swing.*;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 
 public class BodegaCentral {
 
     public static void main(String[] args) {
-        try (Communicator communicator = Util.initialize(args, "bodega.cfg")) {
+        String configPath = resolveConfigPath();
+        try (Communicator communicator = Util.initialize(args, configPath)) {
+
+            System.out.println("[BodegaCentral] Usando configuracion: " + configPath);
 
             // 1. Crear el servant (logica de negocio + inventario en memoria)
             ServicioBodegaImp servant = new ServicioBodegaImp();
@@ -35,5 +41,23 @@ public class BodegaCentral {
             e.printStackTrace();
             System.exit(1);
         }
+    }
+
+    private static String resolveConfigPath() {
+        Path[] candidates = new Path[] {
+                Paths.get("bodega.cfg"),
+                Paths.get("src", "main", "java", "resources", "bodega.cfg"),
+                Paths.get("coffeemach", "bodegaCentral", "src", "main", "java", "resources", "bodega.cfg"),
+                Paths.get("bodegaCentral", "src", "main", "java", "resources", "bodega.cfg")
+        };
+
+        for (Path candidate : candidates) {
+            if (Files.exists(candidate)) {
+                return candidate.toString();
+            }
+        }
+
+        // Mantiene el comportamiento original si no encuentra una ruta alternativa.
+        return "bodega.cfg";
     }
 }

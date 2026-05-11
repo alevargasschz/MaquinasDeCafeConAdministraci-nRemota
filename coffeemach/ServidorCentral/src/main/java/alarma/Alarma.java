@@ -52,13 +52,44 @@ public class Alarma implements AlarmaService {
 
     @Override
     public void recibirNotificacionAbastesimiento(int idMaq, String idInsumo, int cantidad, Current current) {
-        // TODO validar el insumo
-        manager.desactivarAlarma(ALARMA_INGREDIENTE, idMaq, new Date());
+        int tipoAlarma = mapearTipoAlarmaAbastecimiento(idInsumo);
+        manager.desactivarAlarma(tipoAlarma, idMaq, new Date());
     }
 
     @Override
     public void recibirNotificacionMalFuncionamiento(int idMaq, String descri, Current current) {
         manager.alarmaMaquina(ALARMA_MAL_FUNCIONAMIENTO, idMaq, new Date());
+    }
+
+    private int mapearTipoAlarmaAbastecimiento(String idInsumo) {
+        if (idInsumo == null || idInsumo.trim().isEmpty()) {
+            return ALARMA_INGREDIENTE;
+        }
+
+        int id;
+        try {
+            id = Integer.parseInt(idInsumo.trim());
+        } catch (NumberFormatException e) {
+            return ALARMA_INGREDIENTE;
+        }
+
+        if (id == 1 || id == 8 || id == 9 || id == 10 || id == 11 || id == 12 || id == 13 || id == 14 || id == 15) {
+            return ALARMA_INGREDIENTE;
+        }
+        if (id == 2 || id == 3) {
+            return ALARMA_MONEDA_CIEN;
+        }
+        if (id == 4 || id == 5) {
+            return ALARMA_MONEDA_DOS;
+        }
+        if (id == 6) {
+            return ALARMA_MAL_FUNCIONAMIENTO;
+        }
+        if (id == 7) {
+            return ALARMA_MONEDA_QUI;
+        }
+
+        return ALARMA_INGREDIENTE;
     }
 
 }

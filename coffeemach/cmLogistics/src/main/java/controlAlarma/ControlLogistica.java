@@ -1,8 +1,6 @@
 package controlAlarma;
 
 import com.zeroc.Ice.Communicator;
-import com.zeroc.Ice.ObjectNotFoundException;
-
 import servicios.ServicioAbastecimientoPrx;
 import servicios.ServicioBodegaPrx;
 import servicios.ServicioComLogisticaPrx;

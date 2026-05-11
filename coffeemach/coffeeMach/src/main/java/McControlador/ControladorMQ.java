@@ -76,7 +76,6 @@ public class ControladorMQ implements Runnable, ServicioAbastecimiento {
 
 	@Override
 	public void abastecer(int codMaquina, int idAlarma, Current current) {
-		// TODO Auto-generated method stub
 		int cantidad = 0;
 		System.out.println("Entra a abastecer");
 
@@ -86,51 +85,11 @@ public class ControladorMQ implements Runnable, ServicioAbastecimiento {
 
 			System.out.println("Entra al primer if");
 
-			if (idAlarma == 1) {
-				// Habilita Interfaz
+			if (idAlarma >= 1 && idAlarma <= 6) {
+				resolverAlarmaGenerica(idAlarma);
+			} else {
+				resolverAlarmaLegacy(idAlarma);
 			}
-
-			else if (idAlarma == 2 | idAlarma == 3) {
-				// Depositos Monedas
-				DepositoMonedas moneda = monedas.findByKey("100");
-				moneda.setCantidad(20);
-				monedas.addElement("100", moneda);
-
-				if (idAlarma == 3) {
-
-				}
-
-			} else if (idAlarma == 4 | idAlarma == 5) {
-				// Depositos Monedas
-				DepositoMonedas moneda = monedas.findByKey("200");
-				moneda.setCantidad(20);
-				monedas.addElement("200", moneda);
-			}
-
-			else if (idAlarma == 6 | idAlarma == 7) {
-				// Depositos Monedas
-				DepositoMonedas moneda = monedas.findByKey("500");
-				moneda.setCantidad(20);
-				monedas.addElement("500", moneda);
-			}
-
-			else if (idAlarma == 8 | idAlarma == 12) {
-				recargarIngredienteEspecifico("Agua");
-			}
-
-			else if (idAlarma == 9 | idAlarma == 13) {
-				recargarIngredienteEspecifico("Cafe");
-			}
-
-			else if (idAlarma == 10 | idAlarma == 14) {
-				recargarIngredienteEspecifico("Azucar");
-			}
-
-			else if (idAlarma == 11 | idAlarma == 15) {
-				recargarIngredienteEspecifico("Vaso");
-			}
-
-			quitarAlarma(idAlarma + "");
 
 			if (alarmas.getValues().isEmpty()) {
 				frame.setEnabled(true);
@@ -148,8 +107,116 @@ public class ControladorMQ implements Runnable, ServicioAbastecimiento {
 			// ResetAlarmas
 
 			// Envio a Servidor
-			alarmaServicePrx.recibirNotificacionAbastesimiento(codMaquina, idAlarma + "", cantidad);
+			alarmaServicePrx.recibirNotificacionAbastesimiento(codMaquina,
+					mapearTipoAlarmaCentral(idAlarma) + "", cantidad);
 		}
+	}
+
+	private void resolverAlarmaGenerica(int tipo) {
+		switch (tipo) {
+			case 1:
+				recargarIngredienteEspecifico("Agua");
+				recargarIngredienteEspecifico("Cafe");
+				recargarIngredienteEspecifico("Azucar");
+				quitarAlarma("8");
+				quitarAlarma("9");
+				quitarAlarma("10");
+				quitarAlarma("12");
+				quitarAlarma("13");
+				quitarAlarma("14");
+				break;
+			case 2:
+				recargarMoneda("100");
+				quitarAlarma("2");
+				quitarAlarma("3");
+				break;
+			case 3:
+				recargarMoneda("200");
+				quitarAlarma("4");
+				quitarAlarma("5");
+				break;
+			case 4:
+				recargarMoneda("500");
+				quitarAlarma("6");
+				quitarAlarma("7");
+				break;
+			case 5:
+				recargarIngredienteEspecifico("Vaso");
+				quitarAlarma("11");
+				quitarAlarma("15");
+				break;
+			case 6:
+				frame.setEnabled(true);
+				frame.interfazHabilitada();
+				quitarAlarma("1");
+				break;
+			default:
+				break;
+		}
+	}
+
+	private void resolverAlarmaLegacy(int idAlarma) {
+		if (idAlarma == 1) {
+			frame.setEnabled(true);
+			frame.interfazHabilitada();
+			quitarAlarma("1");
+		} else if (idAlarma == 2 || idAlarma == 3) {
+			recargarMoneda("100");
+			quitarAlarma("2");
+			quitarAlarma("3");
+		} else if (idAlarma == 4 || idAlarma == 5) {
+			recargarMoneda("200");
+			quitarAlarma("4");
+			quitarAlarma("5");
+		} else if (idAlarma == 6 || idAlarma == 7) {
+			recargarMoneda("500");
+			quitarAlarma("6");
+			quitarAlarma("7");
+		} else if (idAlarma == 8 || idAlarma == 12) {
+			recargarIngredienteEspecifico("Agua");
+			quitarAlarma("8");
+			quitarAlarma("12");
+		} else if (idAlarma == 9 || idAlarma == 13) {
+			recargarIngredienteEspecifico("Cafe");
+			quitarAlarma("9");
+			quitarAlarma("13");
+		} else if (idAlarma == 10 || idAlarma == 14) {
+			recargarIngredienteEspecifico("Azucar");
+			quitarAlarma("10");
+			quitarAlarma("14");
+		} else if (idAlarma == 11 || idAlarma == 15) {
+			recargarIngredienteEspecifico("Vaso");
+			quitarAlarma("11");
+			quitarAlarma("15");
+		}
+	}
+
+	private void recargarMoneda(String tipo) {
+		DepositoMonedas moneda = monedas.findByKey(tipo);
+		if (moneda != null) {
+			moneda.setCantidad(20);
+			monedas.addElement(tipo, moneda);
+		}
+	}
+
+	private int mapearTipoAlarmaCentral(int idAlarma) {
+		if (idAlarma >= 1 && idAlarma <= 6) {
+			return idAlarma;
+		}
+		if (idAlarma == 2 || idAlarma == 3) {
+			return 2;
+		}
+		if (idAlarma == 4 || idAlarma == 5) {
+			return 3;
+		}
+		if (idAlarma == 6 || idAlarma == 7) {
+			return 4;
+		}
+		if (idAlarma == 11 || idAlarma == 15) {
+			return 5;
+		}
+
+		return 1;
 	}
 
 	public void quitarAlarma(String tipo) {

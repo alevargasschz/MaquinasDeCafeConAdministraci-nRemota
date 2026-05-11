@@ -5,12 +5,9 @@ import java.util.Scanner;
 import modelo.Operador;
 
 public class ConsolaAdministracion implements Runnable{
-
-	private ServerControl control;
 	
 	public ConsolaAdministracion(ServerControl control)
 	{
-		this.control=control;
 	}
 
 	@Override

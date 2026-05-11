@@ -85,6 +85,7 @@ public abstract class Repositorio<K extends Serializable, T extends Serializable
             fis = new FileInputStream(f);
             ObjectInputStream oos = new ObjectInputStream(fis);
 
+            @SuppressWarnings("unchecked")
             Repositorio<K, T> md = (Repositorio<K, T>) oos.readObject();
             this.setElements(md.getElements());
             oos.close();
