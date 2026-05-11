@@ -114,8 +114,17 @@ public class ControladorMQ implements Runnable, ServicioAbastecimiento {
 					recargarIngredienteEspecifico("Vaso");
 					break;
 				case 6:
-					// Mantenimiento/reparacion: no requiere recargar inventario local.
-					break;
+					// Mantenimiento resuelto: limpiar alarma y habilitar siempre
+					limpiarAlarmasPorTipo(tipoCentral, idAlarma);
+					frame.setEnabled(true);
+					frame.interfazHabilitada();
+					respaldarMaq();
+					actualizarRecetasGraf();
+					actualizarInsumosGraf();
+					actualizarAlarmasGraf();
+					alarmaServicePrx.recibirNotificacionAbastesimiento(
+							codMaquina, tipoCentral + "", cantidad, buildForwardContext(current));
+					return;
 				default:
 					break;
 			}
