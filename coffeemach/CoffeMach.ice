@@ -19,6 +19,8 @@ module servicios{
 
     interface ServicioAbastecimiento {
 	   void abastecer(int codMaquina, int tipoAlarma);
+      int cantidadNecesaria(int codMaquina, int tipoAlarma);
+      void abastecerCantidad(int codMaquina, int tipoAlarma, int cantidad);
     }
 
     enum Moneda{

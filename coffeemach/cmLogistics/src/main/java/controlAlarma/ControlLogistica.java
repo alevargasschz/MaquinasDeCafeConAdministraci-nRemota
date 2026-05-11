@@ -12,26 +12,38 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * ControlLogistica
+ * ControlLogistica — CORREGIDO
  *
- * Orquesta el ciclo de vida de una sesion de tecnico:
- *   1. Autenticacion contra ServidorCentral.
- *   2. Consulta de maquinas asignadas con alarmas activas.
- *   3. Resolucion de alarmas:
- *      a) Retira suministros de BodegaCentral.
- *      b) Llama a abastecer() en la CoffeeMach correspondiente.
+ * BUGS CORREGIDOS EN ESTA VERSION:
  *
- * Los proxies se construyen a partir de las propiedades definidas
- * en CmLogistic.cfg, que el Communicator ya tiene cargadas.
+ * [BUG CRITICO] La version anterior llamaba normalizarTipo() sobre los tipos
+ * centrales (1-6) que vienen de la BD, convirtiendo tipo 1 (Ingredientes)
+ * en tipo 6 (Mantenimiento). Eso causaba que:
+ *   - La maquina borrara la alarma de mantenimiento (local "1") en vez de
+ *     recargar ingredientes.
+ *   - La GUI se re-habilitara sin haber recargado nada.
+ *   - El cafe siguiera bajando y llegara a valores negativos.
+ *
+ * SOLUCION: los tipos 1-6 que vienen de la BD ya SON los tipos centrales
+ * correctos. No se normalizan. En cambio, se convierten al codigo LOCAL
+ * que entiende ControladorMQ.abastecer() usando COD_LOCAL_POR_TIPO_CENTRAL.
+ *
+ * Tabla de correspondencia:
+ *   Central 1 (Ingredientes)       → local 8  → machine case 1: recargar ingredientes
+ *   Central 2 (Moneda $100)        → local 2  → machine case 2: recargar moneda 100
+ *   Central 3 (Moneda $200)        → local 4  → machine case 3: recargar moneda 200
+ *   Central 4 (Moneda $500)        → local 6  → machine case 4: recargar moneda 500
+ *   Central 5 (Suministros)        → local 5  → machine case 5: recargar vasos
+ *   Central 6 (Mal funcionamiento) → local 1  → machine case 6: mantenimiento
  */
 public class ControlLogistica {
 
     private static final String CTX_TRACE_ID = "traceId";
-    private static final String CTX_OPERADOR = "operadorId";
-    private static final String CTX_MAQUINA  = "maquinaId";
-    private static final String CTX_ALARMA   = "tipoAlarma";
+    private static final String CTX_OPERADOR  = "operadorId";
+    private static final String CTX_MAQUINA   = "maquinaId";
+    private static final String CTX_ALARMA    = "tipoAlarma";
 
-    // Tipos de alarma (deben coincidir con Alarma.java en ServidorCentral)
+    // Tipos CENTRALES (como estan en la BD y en ServidorCentral/alarma/Alarma.java)
     public static final int ALARMA_INGREDIENTE         = 1;
     public static final int ALARMA_MONEDA_CIEN         = 2;
     public static final int ALARMA_MONEDA_DOSCIENTOS   = 3;
@@ -39,53 +51,75 @@ public class ControlLogistica {
     public static final int ALARMA_SUMINISTRO          = 5;
     public static final int ALARMA_MAL_FUNCIONAMIENTO  = 6;
 
-    // Nombres de items en Bodega por tipo de alarma
+    // Item a retirar de Bodega segun tipo CENTRAL
     private static final Map<Integer, String> ITEM_POR_ALARMA = Map.of(
-            ALARMA_INGREDIENTE,       "Cafe",
-            ALARMA_MONEDA_CIEN,       "Moneda100",
-            ALARMA_MONEDA_DOSCIENTOS, "Moneda200",
-            ALARMA_MONEDA_QUINIENTOS, "Moneda500",
-            ALARMA_SUMINISTRO,        "Vasos",
-            ALARMA_MAL_FUNCIONAMIENTO,"KitReparacion"
+            ALARMA_INGREDIENTE,        "Cafe",
+            ALARMA_MONEDA_CIEN,        "Moneda100",
+            ALARMA_MONEDA_DOSCIENTOS,  "Moneda200",
+            ALARMA_MONEDA_QUINIENTOS,  "Moneda500",
+            ALARMA_SUMINISTRO,         "Vasos",
+            ALARMA_MAL_FUNCIONAMIENTO, "KitReparacion"
     );
 
-    // Cantidad a retirar de Bodega por defecto al resolver cada tipo
+    // Cantidad a retirar de Bodega segun tipo CENTRAL
     private static final Map<Integer, Integer> CANTIDAD_POR_ALARMA = Map.of(
-            ALARMA_INGREDIENTE,       100,
-            ALARMA_MONEDA_CIEN,        20,
-            ALARMA_MONEDA_DOSCIENTOS,  20,
-            ALARMA_MONEDA_QUINIENTOS,  20,
-            ALARMA_SUMINISTRO,         50,
-            ALARMA_MAL_FUNCIONAMIENTO,  1
+            ALARMA_INGREDIENTE,        100,
+            ALARMA_MONEDA_CIEN,         20,
+            ALARMA_MONEDA_DOSCIENTOS,   20,
+            ALARMA_MONEDA_QUINIENTOS,   20,
+            ALARMA_SUMINISTRO,          50,
+            ALARMA_MAL_FUNCIONAMIENTO,   1
     );
 
-    // ---------------------------------------------------------------
-    // Proxies Ice
-    // ---------------------------------------------------------------
-    private final Communicator              communicator;
-    private final ServicioComLogisticaPrx   centralPrx;
-    private final ServicioBodegaPrx         bodegaPrx;
+    /**
+     * Mapeo tipo CENTRAL → codigo LOCAL de la maquina.
+     * Estos son los valores que entiende ControladorMQ.abastecer()
+     * y que luego normalizaTipoAlarma() convierte de vuelta al tipo central.
+     *
+     * La maquina espera codigos locales (1-15), no tipos centrales (1-6).
+     *   - Local 1  → normalizaTipoAlarma → central 6 (mantenimiento)
+     *   - Local 2  → normalizaTipoAlarma → central 2 (moneda 100)
+     *   - Local 4  → normalizaTipoAlarma → central 3 (moneda 200)
+     *   - Local 6  → normalizaTipoAlarma → central 4 (moneda 500)
+     *   - Local 5  → normalizaTipoAlarma → central 5 (suministro)
+     *   - Local 8  → normalizaTipoAlarma → central 1 (ingrediente)
+     */
+    private static final Map<Integer, Integer> COD_LOCAL_POR_TIPO_CENTRAL = Map.ofEntries(
+            Map.entry(ALARMA_INGREDIENTE,        8),
+            Map.entry(ALARMA_MONEDA_CIEN,        2),
+            Map.entry(ALARMA_MONEDA_DOSCIENTOS,  4),
+            Map.entry(ALARMA_MONEDA_QUINIENTOS,  6),
+            Map.entry(ALARMA_SUMINISTRO,         5),
+            Map.entry(ALARMA_MAL_FUNCIONAMIENTO, 1),
+            Map.entry(8, 8),
+            Map.entry(9, 9),
+            Map.entry(10, 10),
+            Map.entry(11, 11),
+            Map.entry(12, 12),
+            Map.entry(13, 13),
+            Map.entry(14, 14),
+            Map.entry(15, 15)
+    );
 
-    /** ID del operador autenticado (0 = no autenticado). */
+    private final Communicator            communicator;
+    private final ServicioComLogisticaPrx centralPrx;
+    private final ServicioBodegaPrx       bodegaPrx;
+
     private int idOperador = 0;
 
     public ControlLogistica(Communicator communicator) {
         this.communicator = communicator;
 
-        // Proxy al ServidorCentral (ServicioComLogistica)
         centralPrx = ServicioComLogisticaPrx.checkedCast(
                 communicator.propertyToProxy("ServicioCentral.Proxy"));
-
         if (centralPrx == null) {
             throw new RuntimeException(
                     "No se pudo conectar con ServidorCentral. " +
                             "Verifique 'ServicioCentral.Proxy' en CmLogistic.cfg.");
         }
 
-        // Proxy a BodegaCentral (ServicioBodega)
         bodegaPrx = ServicioBodegaPrx.checkedCast(
                 communicator.propertyToProxy("ServicioBodega.Proxy"));
-
         if (bodegaPrx == null) {
             throw new RuntimeException(
                     "No se pudo conectar con BodegaCentral. " +
@@ -97,10 +131,6 @@ public class ControlLogistica {
     // Autenticacion
     // ---------------------------------------------------------------
 
-    /**
-     * Inicia sesion del tecnico en el ServidorCentral.
-     * @return true si las credenciales son validas.
-     */
     public boolean login(int id, String password) {
         boolean ok = centralPrx.inicioSesion(id, password);
         if (ok) {
@@ -114,22 +144,19 @@ public class ControlLogistica {
 
     public int getIdOperador() { return idOperador; }
 
+    /** Expone el Communicator para que la GUI pueda leer propiedades del .cfg. */
+    public Communicator getCommunicator() { return communicator; }
+
     // ---------------------------------------------------------------
     // Consulta de tareas
     // ---------------------------------------------------------------
 
-    /**
-     * Retorna todas las maquinas asignadas al tecnico (con y sin alarmas).
-     * Formato de cada string: "idMaq-ubicacion"
-     */
+    /** Retorna todas las maquinas asignadas al tecnico. */
     public List<String> getMaquinasAsignadas() {
         return centralPrx.asignacionMaquina(idOperador);
     }
 
-    /**
-     * Retorna las maquinas asignadas que tienen alarmas activas.
-     * Formato de cada string: "idMaq-ubicacion"
-     */
+    /** Retorna las maquinas asignadas que tienen alarmas activas en la BD. */
     public List<String> getMaquinasConAlarmas() {
         return centralPrx.asignacionMaquinasDesabastecidas(idOperador);
     }
@@ -139,8 +166,7 @@ public class ControlLogistica {
     // ---------------------------------------------------------------
 
     public Map<String, Integer> getInventarioBodega() {
-        // Combina ingredientes + monedas + suministros
-        Map<String, Integer> total = new java.util.HashMap<>();
+        Map<String, Integer> total = new HashMap<>();
         total.putAll(bodegaPrx.consultarIngredientes());
         total.putAll(bodegaPrx.consultarMonedas());
         total.putAll(bodegaPrx.consultarSuministros());
@@ -148,86 +174,27 @@ public class ControlLogistica {
     }
 
     // ---------------------------------------------------------------
-    // Resolucion de alarmas
+    // Resolucion de alarmas — con IP/puerto manual
     // ---------------------------------------------------------------
 
     /**
-     * Resuelve una alarma en la maquina indicada.
+     * Resuelve una alarma usando IP y puerto ingresados manualmente.
      *
-     * Flujo:
-     *   1. Determina el item necesario segun el tipo de alarma.
-     *   2. Retira la cantidad del item de BodegaCentral.
-     *   3. Si es mal funcionamiento entrega un kit al tecnico.
-     *   4. Llama a abastecer() en la CoffeeMach correspondiente.
-     *
-     * @param idMaquina  Codigo de la maquina con alarma.
-     * @param tipoAlarma Tipo de alarma (constantes ALARMA_*).
-     * @param ipMaquina  IP donde corre la CoffeeMach (para construir el proxy).
-     * @param puertoMaq  Puerto de la CoffeeMach.
-     * @return Mensaje descriptivo del resultado.
+     * @param idMaquina   ID de la maquina (columna 0 de la tabla de alarmas).
+     * @param tipoCentral Tipo de alarma CENTRAL (1-6, como aparece en la BD).
+     * @param ipMaquina   IP donde corre la CoffeeMach.
+     * @param puertoMaq   Puerto de la CoffeeMach.
      */
-//    public String resolverAlarma(int idMaquina, int tipoAlarma,
-//                                 String ipMaquina, int puertoMaq) {
-//
-//        String item     = ITEM_POR_ALARMA.getOrDefault(tipoAlarma, "Desconocido");
-//        int    cantidad = CANTIDAD_POR_ALARMA.getOrDefault(tipoAlarma, 0);
-//        Map<String, String> traceCtx = buildTraceContext(idMaquina, tipoAlarma);
-//        String traceId = traceCtx.get(CTX_TRACE_ID);
-//
-//        try {
-//            // Paso 1 — Retirar de la Bodega
-//            if (tipoAlarma == ALARMA_MAL_FUNCIONAMIENTO) {
-//                bodegaPrx.entregaKitReparacion(idOperador, traceCtx);
-//            } else {
-//                bodegaPrx.retirarExistencias(item, cantidad, traceCtx);
-//            }
-//            System.out.println("[Logistica][" + traceId + "] Bodega: retirado " + cantidad
-//                    + " de '" + item + "'.");
-//
-//            // Paso 2 — Llamar a abastecer() en la maquina
-//            String proxyStr = "abastecer:tcp -h " + ipMaquina + " -p " + puertoMaq;
-//            ServicioAbastecimientoPrx maqPrx = ServicioAbastecimientoPrx.checkedCast(
-//                    communicator.stringToProxy(proxyStr));
-//
-//            if (maqPrx == null) {
-//                return "ERROR: No se pudo conectar con la maquina " + idMaquina
-//                        + " en " + ipMaquina + ":" + puertoMaq;
-//            }
-//
-//                maqPrx.abastecer(idMaquina, tipoAlarma, traceCtx);
-//                System.out.println("[Logistica][" + traceId + "] Maquina " + idMaquina
-//                    + " abastecida (alarma tipo " + tipoAlarma + ").");
-//
-//                return "OK — [" + traceId + "] Alarma tipo " + tipoAlarma + " resuelta en maquina "
-//                    + idMaquina + ". Item: " + item + " (" + cantidad + " uds.)";
-//
-//        } catch (Exception ex) {
-//            String msg = "ERROR [" + traceId + "] al resolver alarma en maquina " + idMaquina
-//                    + ": " + ex.getMessage();
-//            System.err.println("[Logistica] " + msg);
-//            return msg;
-//        }
-//    }
-    public String resolverAlarma(int idMaquina, int idAlarma,
+    public String resolverAlarma(int idMaquina, int tipoCentral,
                                  String ipMaquina, int puertoMaq) {
-
-        // Normalizar SIEMPRE el idAlarma (local 1-15) al tipo central (1-6)
-        int tipoCentral = normalizarTipo(idAlarma);
-
-        String item     = ITEM_POR_ALARMA.getOrDefault(tipoCentral, "Desconocido");
-        int    cantidad = CANTIDAD_POR_ALARMA.getOrDefault(tipoCentral, 0);
-        Map<String, String> traceCtx = buildTraceContext(idMaquina, tipoCentral);
-        String traceId = traceCtx.get(CTX_TRACE_ID);
+        String item       = itemPorAlarma(tipoCentral, null);
+        int    cantidad   = 0;
+        int    codLocal   = COD_LOCAL_POR_TIPO_CENTRAL.getOrDefault(tipoCentral, tipoCentral);
+        Map<String, String> ctx = buildTraceContext(idMaquina, tipoCentral);
+        String traceId = ctx.get(CTX_TRACE_ID);
 
         try {
-            // Paso 1 — Bodega (usa tipoCentral para saber qué ítem retirar)
-            if (tipoCentral == ALARMA_MAL_FUNCIONAMIENTO) {
-                bodegaPrx.entregaKitReparacion(idOperador, traceCtx);
-            } else {
-                bodegaPrx.retirarExistencias(item, cantidad, traceCtx);
-            }
-
-            // Paso 2 — Máquina (le mandamos el idAlarma ORIGINAL para que ella normalice)
+            // La bodega se descuenta despues de consultar la cantidad exacta a la maquina.
             String proxyStr = "abastecer:tcp -h " + ipMaquina + " -p " + puertoMaq;
             ServicioAbastecimientoPrx maqPrx = ServicioAbastecimientoPrx.checkedCast(
                     communicator.stringToProxy(proxyStr));
@@ -237,10 +204,20 @@ public class ControlLogistica {
                         + " en " + ipMaquina + ":" + puertoMaq;
             }
 
-            maqPrx.abastecer(idMaquina, idAlarma, traceCtx); // ← idAlarma original
-            return "OK — [" + traceId + "] Alarma " + idAlarma + " (tipo " + tipoCentral
-                    + ") resuelta en maquina " + idMaquina + ". Item: " + item
-                    + " (" + cantidad + " uds.)";
+            cantidad = cantidadParaResolver(maqPrx, idMaquina, codLocal, tipoCentral, ctx);
+            String errorStock = validarStock(item, cantidad);
+            if (errorStock != null) {
+                return "ERROR [" + traceId + "]: " + errorStock;
+            }
+
+            retirarDeBodega(tipoCentral, item, cantidad, ctx);
+            System.out.println("[Logistica][" + traceId + "] Bodega: retirado "
+                    + cantidad + " de '" + item + "'.");
+
+            maqPrx.abastecerCantidad(idMaquina, codLocal, cantidad, ctx);
+            return "OK — [" + traceId + "] Alarma central " + tipoCentral
+                    + " (cod local " + codLocal + ") resuelta en maquina " + idMaquina
+                    + ". Bodega: -" + cantidad + " " + item;
 
         } catch (Exception ex) {
             String msg = "ERROR [" + traceId + "] al resolver alarma en maquina "
@@ -250,93 +227,144 @@ public class ControlLogistica {
         }
     }
 
-    /**
-     * Sobrecarga conveniente: usa el proxy de maquina configurado en
-     * CmLogistic.cfg (propiedad MaquinaCafe.Proxy).
-     * Util cuando todas las maquinas estan en la misma red y se
-     * indica el endpoint por configuracion.
-     */
-//    public String resolverAlarmaCfg(int idMaquina, int tipoAlarma) {
-//        String item     = ITEM_POR_ALARMA.getOrDefault(tipoAlarma, "Desconocido");
-//        int    cantidad = CANTIDAD_POR_ALARMA.getOrDefault(tipoAlarma, 0);
-//        Map<String, String> traceCtx = buildTraceContext(idMaquina, tipoAlarma);
-//        String traceId = traceCtx.get(CTX_TRACE_ID);
-//
-//        try {
-//            if (tipoAlarma == ALARMA_MAL_FUNCIONAMIENTO) {
-//                bodegaPrx.entregaKitReparacion(idOperador, traceCtx);
-//            } else {
-//                bodegaPrx.retirarExistencias(item, cantidad, traceCtx);
-//            }
-//
-//            ServicioAbastecimientoPrx maqPrx = ServicioAbastecimientoPrx.checkedCast(
-//                    communicator.propertyToProxy("MaquinaCafe.Proxy"));
-//
-//            if (maqPrx == null) {
-//                return "ERROR: Proxy MaquinaCafe.Proxy no configurado en CmLogistic.cfg";
-//            }
-//
-//            maqPrx.abastecer(idMaquina, tipoAlarma, traceCtx);
-//            return "OK — [" + traceId + "] Alarma tipo " + tipoAlarma + " resuelta en maquina "
-//                    + idMaquina + ". Item: " + item + " (" + cantidad + " uds.)";
-//
-//        } catch (Exception ex) {
-//            return "ERROR [" + traceId + "]: " + ex.getMessage();
-//        }
-//    }
+    // ---------------------------------------------------------------
+    // Resolucion de alarmas — usando proxy del .cfg (RECOMENDADO)
+    // ---------------------------------------------------------------
 
-    public String resolverAlarmaCfg(int idMaquina, int idAlarma) {
-        int tipoCentral = normalizarTipo(idAlarma); // ← mismo fix
-        String item     = ITEM_POR_ALARMA.getOrDefault(tipoCentral, "Desconocido");
-        int    cantidad = CANTIDAD_POR_ALARMA.getOrDefault(tipoCentral, 0);
-        Map<String, String> traceCtx = buildTraceContext(idMaquina, tipoCentral);
-        String traceId = traceCtx.get(CTX_TRACE_ID);
+    /**
+     * Resuelve usando MaquinaCafe.Proxy del CmLogistic.cfg.
+     * Metodo principal para uso en laboratorio.
+     *
+     * @param idMaquina   ID de la maquina (columna 0 de la tabla de alarmas).
+     * @param tipoCentral Tipo de alarma CENTRAL (1-6, como aparece en la BD).
+     */
+    public String resolverAlarmaCfg(int idMaquina, int tipoCentral) {
+        String item     = itemPorAlarma(tipoCentral, null);
+        int    cantidad = 0;
+        int    codLocal = COD_LOCAL_POR_TIPO_CENTRAL.getOrDefault(tipoCentral, tipoCentral);
+        Map<String, String> ctx = buildTraceContext(idMaquina, tipoCentral);
+        String traceId = ctx.get(CTX_TRACE_ID);
 
         try {
-            if (tipoCentral == ALARMA_MAL_FUNCIONAMIENTO) {
-                bodegaPrx.entregaKitReparacion(idOperador, traceCtx);
-            } else {
-                bodegaPrx.retirarExistencias(item, cantidad, traceCtx);
-            }
-
             ServicioAbastecimientoPrx maqPrx = ServicioAbastecimientoPrx.checkedCast(
                     communicator.propertyToProxy("MaquinaCafe.Proxy"));
 
             if (maqPrx == null) {
-                return "ERROR: Proxy MaquinaCafe.Proxy no configurado en CmLogistic.cfg";
+                return "ERROR: 'MaquinaCafe.Proxy' no configurado en CmLogistic.cfg";
             }
 
-            maqPrx.abastecer(idMaquina, idAlarma, traceCtx); // ← idAlarma original
-            return "OK — [" + traceId + "] Alarma " + idAlarma + " (tipo " + tipoCentral
-                    + ") resuelta. Item: " + item + " (" + cantidad + " uds.)";
+            cantidad = cantidadParaResolver(maqPrx, idMaquina, codLocal, tipoCentral, ctx);
+            String errorStock = validarStock(item, cantidad);
+            if (errorStock != null) {
+                return "ERROR [" + traceId + "]: " + errorStock;
+            }
+
+            retirarDeBodega(tipoCentral, item, cantidad, ctx);
+            System.out.println("[Logistica][" + traceId + "] Bodega: retirado "
+                    + cantidad + " de '" + item + "'.");
+
+            maqPrx.abastecerCantidad(idMaquina, codLocal, cantidad, ctx);
+            return "OK — [" + traceId + "] Alarma central " + tipoCentral
+                    + " (cod local " + codLocal + ") resuelta en maquina " + idMaquina
+                    + ". Bodega: -" + cantidad + " " + item;
 
         } catch (Exception ex) {
-            return "ERROR [" + traceId + "]: " + ex.getMessage();
+            String msg = "ERROR [" + traceId + "]: " + ex.getMessage();
+            System.err.println("[Logistica] " + msg);
+            return msg;
         }
     }
 
-    // Metodo privado de normalización (espejo del ControladorMQ)
-    private int normalizarTipo(int idAlarma) {
-        switch (idAlarma) {
-            case 1:  return ALARMA_MAL_FUNCIONAMIENTO;
-            case 2: case 3: return ALARMA_MONEDA_CIEN;
-            case 4: case 5: return ALARMA_MONEDA_DOSCIENTOS;
-            case 6: case 7: return ALARMA_MONEDA_QUINIENTOS;
-            case 8: case 9: case 10: case 11:
-            case 12: case 13: case 14: case 15: return ALARMA_INGREDIENTE;
-            default:
-                // Ya viene como tipo central (1-6)
-                return (idAlarma >= 1 && idAlarma <= 6) ? idAlarma : ALARMA_INGREDIENTE;
+    // ---------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------
+
+    private void retirarDeBodega(int tipoCentral, String item, int cantidad, Map<String, String> ctx) {
+        if (tipoCentral == ALARMA_MAL_FUNCIONAMIENTO) {
+            bodegaPrx.entregaKitReparacion(idOperador, ctx);
+        } else {
+            bodegaPrx.retirarExistencias(item, cantidad, ctx);
         }
     }
 
+    private int cantidadParaResolver(ServicioAbastecimientoPrx maqPrx, int idMaquina,
+                                     int codLocal, int tipoAlarma, Map<String, String> ctx) {
+        int cantidad = maqPrx.cantidadNecesaria(idMaquina, codLocal, ctx);
+        if (cantidad > 0) {
+            return cantidad;
+        }
+        return CANTIDAD_POR_ALARMA.getOrDefault(tipoAlarma, 0);
+    }
+
+    private String validarStock(String item, int cantidad) {
+        int disponible = getInventarioBodega().getOrDefault(item, 0);
+        if (disponible < cantidad) {
+            return "Bodega no tiene suficiente '" + item + "'. Disponible: "
+                    + disponible + ", requerido: " + cantidad + ".";
+        }
+        return null;
+    }
+
+    private String itemPorAlarma(int tipoAlarma, String descripcion) {
+        if (tipoAlarma == ALARMA_INGREDIENTE || esAlarmaIngredienteEspecifica(tipoAlarma)) {
+            String item = ingredienteDesdeDescripcion(descripcion);
+            if (item != null) {
+                return item;
+            }
+            switch (tipoAlarma) {
+                case 8:
+                case 12:
+                    return "Agua";
+                case 9:
+                case 13:
+                    return "Cafe";
+                case 10:
+                case 14:
+                    return "Azucar";
+                case 11:
+                case 15:
+                    return "Vasos";
+                default:
+                    return "Cafe";
+            }
+        }
+        return ITEM_POR_ALARMA.getOrDefault(tipoAlarma, "Desconocido");
+    }
+
+    private boolean esAlarmaIngredienteEspecifica(int tipoAlarma) {
+        return tipoAlarma >= 8 && tipoAlarma <= 15;
+    }
+
+    private String ingredienteDesdeDescripcion(String descripcion) {
+        if (descripcion == null) {
+            return null;
+        }
+        String normalizada = descripcion.trim();
+        int idx = normalizada.toLowerCase().lastIndexOf(" de ");
+        if (idx >= 0 && idx + 4 < normalizada.length()) {
+            normalizada = normalizada.substring(idx + 4).trim();
+        }
+        if (normalizada.isEmpty()) {
+            return null;
+        }
+        if (normalizada.equalsIgnoreCase("café")) {
+            return "Cafe";
+        }
+        if (normalizada.equalsIgnoreCase("azúcar")) {
+            return "Azucar";
+        }
+        if (normalizada.equalsIgnoreCase("vaso")) {
+            return "Vasos";
+        }
+        return normalizada.substring(0, 1).toUpperCase() + normalizada.substring(1);
+    }
 
     private Map<String, String> buildTraceContext(int idMaquina, int tipoAlarma) {
         Map<String, String> ctx = new HashMap<>();
         ctx.put(CTX_TRACE_ID, UUID.randomUUID().toString());
-        ctx.put(CTX_OPERADOR, String.valueOf(idOperador));
-        ctx.put(CTX_MAQUINA, String.valueOf(idMaquina));
-        ctx.put(CTX_ALARMA, String.valueOf(tipoAlarma));
+        ctx.put(CTX_OPERADOR,  String.valueOf(idOperador));
+        ctx.put(CTX_MAQUINA,   String.valueOf(idMaquina));
+        ctx.put(CTX_ALARMA,    String.valueOf(tipoAlarma));
         return ctx;
     }
 }

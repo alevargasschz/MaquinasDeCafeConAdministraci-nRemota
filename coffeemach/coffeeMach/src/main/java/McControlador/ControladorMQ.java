@@ -38,7 +38,7 @@ public class ControladorMQ implements Runnable, ServicioAbastecimiento {
 	private VentaRepositorio ventas = VentaRepositorio.getInstance();
 
 	/**
-	 * @param ventas the ventas to set
+	 * @param ventasS the ventas to set
 	 */
 	public void setVentas(VentaServicePrx ventasS) {
 		this.ventasService = ventasS;
@@ -78,11 +78,32 @@ public class ControladorMQ implements Runnable, ServicioAbastecimiento {
 
 	@Override
 	public void abastecer(int codMaquina, int idAlarma, Current current) {
+		abastecerCantidad(codMaquina, idAlarma, cantidadNecesaria(codMaquina, idAlarma, current), current);
+	}
+
+	@Override
+	public int cantidadNecesaria(int codMaquina, int idAlarma, Current current) {
+		if (codMaquina != this.codMaquina) {
+			return 0;
+		}
+
 		int tipoCentral = normalizarTipoAlarma(idAlarma);
-		int cantidad = cantidadPorTipo(tipoCentral);
+		if (tipoCentral == 1) {
+			String ingrediente = ingredientePorAlarma(idAlarma);
+			if (ingrediente == null) {
+				return cantidadTotalIngredientesFaltante();
+			}
+			return cantidadFaltanteIngrediente(ingrediente);
+		}
+		return cantidadPorTipo(tipoCentral);
+	}
+
+	@Override
+	public void abastecerCantidad(int codMaquina, int idAlarma, int cantidad, Current current) {
+		int tipoCentral = normalizarTipoAlarma(idAlarma);
 		System.out.println("Entra a abastecer");
 		System.out.println(codMaquina + "-" + idAlarma + "-" + this.codMaquina
-				+ " tipoCentral=" + tipoCentral + " trace=" + traceIdFrom(current));
+				+ " tipoCentral=" + tipoCentral + " cantidad=" + cantidad + " trace=" + traceIdFrom(current));
 
 		if (codMaquina == this.codMaquina) {
 
@@ -90,7 +111,12 @@ public class ControladorMQ implements Runnable, ServicioAbastecimiento {
 
 			switch (tipoCentral) {
 				case 1:
-					recargarIngredienteEspecifico("Cafe");
+					String ingrediente = ingredientePorAlarma(idAlarma);
+					if (ingrediente == null) {
+						recargarTodosLosIngredientes();
+					} else {
+						recargarIngredienteEspecifico(ingrediente, cantidad);
+					}
 					break;
 				case 2: {
 					DepositoMonedas moneda = monedas.findByKey("100");
@@ -149,7 +175,7 @@ public class ControladorMQ implements Runnable, ServicioAbastecimiento {
 			// Envio a Servidor
 			alarmaServicePrx.recibirNotificacionAbastesimiento(
 					codMaquina,
-					tipoCentral + "",
+					idAlarmaParaServidor(tipoCentral, idAlarma) + "",
 					cantidad,
 					buildForwardContext(current));
 		}
@@ -207,14 +233,7 @@ public class ControladorMQ implements Runnable, ServicioAbastecimiento {
 
 		switch (tipoCentral) {
 			case 1:
-				quitarAlarma("8");
-				quitarAlarma("9");
-				quitarAlarma("10");
-				quitarAlarma("11");
-				quitarAlarma("12");
-				quitarAlarma("13");
-				quitarAlarma("14");
-				quitarAlarma("15");
+				limpiarAlarmasIngrediente(idOriginal);
 				break;
 			case 2:
 				quitarAlarma("2");
@@ -260,6 +279,84 @@ public class ControladorMQ implements Runnable, ServicioAbastecimiento {
 		Ingrediente ing = ingredientes.findByKey(ingrediente);
 		ing.setCantidad(ing.getMaximo());
 		ingredientes.addElement(ingrediente, ing);
+	}
+
+	public void recargarIngredienteEspecifico(String ingrediente, int cantidad) {
+		Ingrediente ing = ingredientes.findByKey(ingrediente);
+		if (ing == null) {
+			System.err.println("[CoffeeMach] Ingrediente no encontrado: " + ingrediente);
+			return;
+		}
+		double nuevaCantidad = cantidad <= 0 ? ing.getMaximo() : Math.min(ing.getMaximo(), ing.getCantidad() + cantidad);
+		ing.setCantidad(nuevaCantidad);
+		ingredientes.addElement(ingrediente, ing);
+		System.out.println("[CoffeeMach] " + ingrediente + " recargado a " + nuevaCantidad + ".");
+	}
+
+	public void recargarTodosLosIngredientes() {
+		for (Ingrediente ing : ingredientes.getValues()) {
+			ing.setCantidad(ing.getMaximo());
+			ingredientes.addElement(ing.getNombre(), ing);
+		}
+		System.out.println("[CoffeeMach] Todos los ingredientes recargados al maximo.");
+	}
+
+	private String ingredientePorAlarma(int idAlarma) {
+		for (Ingrediente ing : ingredientes.getValues()) {
+			try {
+				int codAlarma = Integer.parseInt(ing.getCodAlarma());
+				if (codAlarma == idAlarma || codAlarma + 4 == idAlarma) {
+					return ing.getNombre();
+				}
+			} catch (NumberFormatException ignored) {
+			}
+		}
+		return null;
+	}
+
+	private int cantidadFaltanteIngrediente(String ingrediente) {
+		Ingrediente ing = ingredientes.findByKey(ingrediente);
+		if (ing == null) {
+			return 0;
+		}
+		return Math.max(0, (int) Math.ceil(ing.getMaximo() - ing.getCantidad()));
+	}
+
+	private int cantidadTotalIngredientesFaltante() {
+		int total = 0;
+		for (Ingrediente ing : ingredientes.getValues()) {
+			total += Math.max(0, (int) Math.ceil(ing.getMaximo() - ing.getCantidad()));
+		}
+		return total;
+	}
+
+	private void limpiarAlarmasIngrediente(int idOriginal) {
+		String ingrediente = ingredientePorAlarma(idOriginal);
+		if (ingrediente == null) {
+			quitarAlarma("8");
+			quitarAlarma("9");
+			quitarAlarma("10");
+			quitarAlarma("11");
+			quitarAlarma("12");
+			quitarAlarma("13");
+			quitarAlarma("14");
+			quitarAlarma("15");
+			return;
+		}
+		Ingrediente ing = ingredientes.findByKey(ingrediente);
+		if (ing == null) {
+			return;
+		}
+		try {
+			int codAlarma = Integer.parseInt(ing.getCodAlarma());
+			quitarAlarma(codAlarma + "");
+			quitarAlarma((codAlarma + 4) + "");
+		} catch (NumberFormatException ignored) {
+		}
+	}
+
+	private int idAlarmaParaServidor(int tipoCentral, int idOriginal) {
+		return tipoCentral == 1 && idOriginal >= 8 && idOriginal <= 15 ? idOriginal : tipoCentral;
 	}
 
 	public void eventos() {
@@ -515,7 +612,8 @@ public class ControladorMQ implements Runnable, ServicioAbastecimiento {
 
 					// Enviar SCA
 
-					alarmaServicePrx.recibirNotificacionEscasezIngredientes(ing.getNombre(), codMaquina);
+					alarmaServicePrx.recibirNotificacionEscasezIngredientes(
+							ing.getNombre() + "#" + ing.getCodAlarma(), codMaquina);
 
 					frame.getTextAreaAlarmas().setText(
 							frame.getTextAreaAlarmas().getText()
@@ -535,7 +633,8 @@ public class ControladorMQ implements Runnable, ServicioAbastecimiento {
 
 				// Enviar SCA
 
-				alarmaServicePrx.recibirNotificacionEscasezIngredientes(ing.getNombre(), codMaquina);
+				alarmaServicePrx.recibirNotificacionEscasezIngredientes(
+						ing.getNombre() + "#" + codAlarma, codMaquina);
 
 				frame.getTextAreaAlarmas().setText(
 						frame.getTextAreaAlarmas().getText()

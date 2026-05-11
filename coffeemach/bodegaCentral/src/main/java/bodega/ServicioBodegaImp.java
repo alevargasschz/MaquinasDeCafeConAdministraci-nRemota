@@ -35,6 +35,7 @@ public class ServicioBodegaImp implements ServicioBodega, Bodega {
         // Stock inicial para pruebas
         inventario.put("Cafe",        1000);
         inventario.put("Azucar",      2000);
+        inventario.put("Agua",        2000);
         inventario.put("Leche",       1500);
         inventario.put("Vasos",        500);
         inventario.put("Moneda100",     50);
@@ -56,7 +57,7 @@ public class ServicioBodegaImp implements ServicioBodega, Bodega {
     @Override
     public Map<String, Integer> consultarIngredientes(Current current) {
         Map<String, Integer> result = new ConcurrentHashMap<>();
-        for (String ing : new String[]{"Cafe", "Azucar", "Leche"}) {
+        for (String ing : new String[]{"Cafe", "Azucar", "Agua", "Leche"}) {
             result.put(ing, inventario.getOrDefault(ing, 0));
         }
         return result;
